@@ -232,15 +232,17 @@ const App: React.FC = () => {
                 if (clientForAction) {
                     const account = accounts.find(a => a.id === job.accountId);
                     const phoneNumber = clientForAction.customFields[action.phoneFieldId];
-                    if (account?.whatsappApiUrl && phoneNumber) {
+                    if (account?.whatsappApiUrl && account.whatsappApiKey && phoneNumber) {
                        // Fire-and-forget API call
                        fetch(account.whatsappApiUrl, {
                            method: 'POST',
-                           headers: { 'Content-Type': 'application/json', 'X-API-TOKEN': account.whatsappApiKey || '' },
+                           headers: { 
+                               'Content-Type': 'application/json', 
+                               'Authorization': `Bearer ${account.whatsappApiKey}` 
+                           },
                            body: JSON.stringify({
-                               from: account.whatsappInstanceId,
                                to: phoneNumber,
-                               contents: [{ type: 'text', text: replacePlaceholders(action.messageTemplate, fullContextData) }]
+                               message: replacePlaceholders(action.messageTemplate, fullContextData)
                            })
                        }).catch(console.error);
                     }
@@ -283,19 +285,25 @@ const App: React.FC = () => {
               const form = allForms.find(f => f.id === sub.formId);
               if (form) {
                 const customFields: Record<string, any> = {};
+                let clientName = 'Novo Lead';
+                let clientEmail = '';
                 
                 form.fields.forEach(field => {
                   const value = sub.formData[field.id];
                   if (value && field.mapsToClientField) {
-                     if (field.mapsToClientField !== 'name' && field.mapsToClientField !== 'email') {
+                     if (field.mapsToClientField === 'name') {
+                        clientName = value;
+                     } else if (field.mapsToClientField === 'email') {
+                        clientEmail = value;
+                     } else {
                        customFields[field.mapsToClientField] = value;
                      }
                   }
                 });
 
                 const newClient: Client = {
-                  name: sub.formData.name || 'Novo Lead do Formulário',
-                  email: sub.formData.email || '',
+                  name: clientName,
+                  email: clientEmail,
                   listId: form.destinationListId,
                   customFields: customFields,
                   id: `client-${Date.now()}-${Math.random()}`,
@@ -540,22 +548,38 @@ const App: React.FC = () => {
   const saveWhatsAppConfig = async (accountId: string, config: { apiUrl: string, apiKey: string, instanceId: string, testNumber?: string }): Promise<{ success: boolean; message: string }> => {
     setAccounts(prev => prev.map(acc => acc.id === accountId ? { ...acc, whatsappApiUrl: config.apiUrl, whatsappApiKey: config.apiKey, whatsappInstanceId: config.instanceId } : acc));
     
-    if (config.testNumber) {
+    if (config.testNumber && config.apiUrl && config.apiKey) {
         try {
-            const payload = { from: config.instanceId, to: config.testNumber, contents: [{ type: 'text', text: 'Esta é uma mensagem de teste do Creapar CRM.' }] };
+            const payload = {
+                to: config.testNumber,
+                message: 'Esta é uma mensagem de teste do Creapar CRM.'
+            };
             const response = await fetch(config.apiUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-API-TOKEN': config.apiKey },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${config.apiKey}`
+                },
                 body: JSON.stringify(payload)
             });
-            if (!response.ok) throw new Error('A API retornou um erro.');
+            if (!response.ok) {
+                let errorBody = 'A API retornou um erro desconhecido.';
+                try {
+                    const errorData = await response.json();
+                    errorBody = `Erro da API: ${JSON.stringify(errorData)}`;
+                } catch (e) {
+                    errorBody = `A API retornou um erro com status ${response.status}.`;
+                }
+                throw new Error(errorBody);
+            }
             return { success: true, message: 'Configuração salva e mensagem de teste enviada com sucesso!' };
-        } catch (error) {
+        } catch (error: any) {
             console.error("WhatsApp test message failed:", error);
-            return { success: false, message: 'Configuração salva, mas a mensagem de teste falhou. Verifique as credenciais e a URL.' };
+            const errorMessage = error.message || 'Erro desconhecido ao enviar mensagem de teste.';
+            return { success: false, message: `Configuração salva, mas a mensagem de teste falhou: ${errorMessage}` };
         }
     }
-    return { success: true, message: 'Configuração salva com sucesso (teste não enviado).' };
+    return { success: true, message: 'Configuração salva com sucesso (nenhum número de teste fornecido).' };
   };
 
   const addClientMessage = (clientId: string, content: string) => {

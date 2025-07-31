@@ -83,7 +83,7 @@ export interface OneOffJob {
   title: string;
   description: string;
   value: number;
-  dueDate: string; // YYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
   status: 'Pendente' | 'Em Andamento' | 'Concluído' | 'Pago';
   createdAt: string; // ISO Date String
 }
@@ -177,7 +177,7 @@ export interface ScheduledJob {
 }
 
 // --- Form Types ---
-export type FormFieldType = 'text' | 'email' | 'number' | 'textarea' | 'select';
+export type FormFieldType = 'text' | 'email' | 'number' | 'textarea' | 'select' | 'date';
 
 export interface FormField {
     id: string;
